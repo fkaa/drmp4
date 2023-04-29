@@ -1,0 +1,15 @@
+[package]
+name = "drmp4"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+aho-corasick = "1.0.1"
+anyhow = "1.0.70"
+h264-reader = { path = "../h264-reader" } # git = "https://github.com/dholroyd/h264-reader" }
+memmap = "0.7.0"
+owo-colors = "3.5.0"
+pretty-hex = "0.3.0"
+twoway = "0.2.2"
