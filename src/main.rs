@@ -1,22 +1,23 @@
-use memmap::Mmap;
+use bpaf::*;
+use h264_reader::nal::{NalHeader, UnitType};
+
+use owo_colors::{OwoColorize, Style};
+
 use std::fs::File;
-use std::io::{BufRead, BufReader, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
+use std::path::PathBuf;
 
-use h264_reader::{
-    nal::{pps::PicParameterSet, slice::SliceHeader, sps::SeqParameterSet, NalHeader, UnitType},
-    rbsp::{decode_nal, BitRead, BitReader},
-    Context,
-};
-
+mod aac;
 mod h264;
 
+use aac::*;
 use h264::*;
 
 fn copy_file_slice<R: Read + Seek, W: Write>(
-    mut from: &mut R,
+    from: &mut R,
     slice: Range<u64>,
-    mut to: &mut W,
+    to: &mut W,
 ) -> anyhow::Result<()> {
     from.seek(SeekFrom::Start(slice.start))?;
 
@@ -47,8 +48,6 @@ fn get_start_code_for_nal(header: &NalHeader) -> &'static [u8] {
     }
 }
 
-use owo_colors::{OwoColorize, Style};
-
 fn get_style(header: &NalHeader) -> Style {
     match header.nal_unit_type() {
         UnitType::SliceLayerWithoutPartitioningIdr => Style::new().on_green(),
@@ -58,10 +57,50 @@ fn get_style(header: &NalHeader) -> Style {
     }
 }
 
+#[derive(Debug)]
+struct Options {
+    verbose: bool,
+    file: PathBuf,
+    output: PathBuf,
+}
+
+fn verbose() -> impl Parser<bool> {
+    short('v')
+        .long("verbose")
+        .help("Turn on verbose output")
+        .switch()
+}
+
+fn file() -> impl Parser<PathBuf> {
+    short('i')
+        .long("input")
+        .help("input file")
+        .argument::<PathBuf>("INPUT")
+        .map(PathBuf::from)
+}
+
+fn output() -> impl Parser<PathBuf> {
+    short('o')
+        .long("output")
+        .help("output file")
+        .argument::<PathBuf>("OUTPUT")
+        .map(PathBuf::from)
+}
+
 fn main() {
+    let mut options = (construct!(Options {
+        verbose(),
+        file(),
+        output()
+    }))
+    .to_options()
+    .run();
+
+    println!("{:?}", options);
+
     let mut stream = H264Stream::default();
 
-    let file = File::open("/home/tmtu/working.mp4").unwrap();
+    let file = File::open(options.file).unwrap();
     let mut reader = BufReader::new(file);
     let buf = reader.fill_buf().unwrap();
     let Some(mdat) = twoway::find_bytes(&buf, b"mdat") else {
@@ -69,12 +108,14 @@ fn main() {
     };
     reader.seek(SeekFrom::Start(mdat as u64 + 4)).unwrap();
 
-    stream.process_stream(&mut reader).unwrap();
+    while !stream.process_stream(&mut reader).unwrap() {}
 
-    let mut h264 = File::create("/home/tmtu/video.h264").unwrap();
+    let mut h264 = File::create(options.output.clone()).unwrap();
+    options.output.set_extension("aac");
+    let mut aac = File::create(options.output).unwrap();
 
     for (nal_header, nal_unit) in stream.nal_units() {
-        let nal_style = get_style(nal_header);
+        let _nal_style = get_style(nal_header);
         /*println!(
             "{:02x} {:>50?} (Len={}, Offset={})",
             u8::from(*nal_header).style(nal_style),

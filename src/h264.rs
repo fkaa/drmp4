@@ -18,57 +18,57 @@ impl H264Stream {
         &self.nal_units
     }
 
-    pub fn process_stream<R: BufRead + Seek>(&mut self, reader: &mut R) -> anyhow::Result<()> {
-        'outer: loop {
-            let buffer_pos = reader.stream_position()?;
-            let mut buffer = reader.fill_buf()?;
-            let mut buffer_offset = 0;
-            let buffer_len = buffer.len().min(1024);
+    pub fn process_stream<R: BufRead + Seek>(&mut self, reader: &mut R) -> anyhow::Result<bool> {
+        let buffer_pos = reader.stream_position()?;
+        let mut buffer = reader.fill_buf()?;
+        let mut buffer_offset = 0;
+        let buffer_len = buffer.len().min(1024);
 
-            if buffer_len <= 4 {
-                return Ok(());
-            }
+        if buffer_len <= 4 {
+            return Ok(true);
+        }
 
-            loop {
-                let potential_nal_unit = locate_nal_unit(&buffer[buffer_offset..], 10000000);
-                match potential_nal_unit {
-                    Some((offset, header, length)) => {
-                        println!(
-                            "{}, {}, {}, {}, {:?}",
-                            buffer_pos + buffer_offset as u64 + offset as u64,
-                            buffer_len,
-                            buffer_offset as u64,
-                            length,
-                            header
-                        );
-                        if !self.is_nal_believable(
-                            header,
-                            length,
-                            buffer_pos,
-                            &buffer[(buffer_offset + offset)
-                                ..(buffer_offset + offset + length as usize).min(buffer.len())],
-                        ) {
-                            buffer_offset += offset - 3;
-                            continue;
-                        }
-
-                        let nal_start = buffer_pos + buffer_offset as u64 + offset as u64;
-                        let nal_end = nal_start + length as u64;
-                        self.nal_units.push((header, nal_start..nal_end));
-
-                        println!("Seeking to nal end {}", nal_end);
-
-                        reader.seek(SeekFrom::Start(nal_end))?;
-                        continue 'outer;
+        loop {
+            let potential_nal_unit = locate_nal_unit(&buffer[buffer_offset..], 10000000);
+            match potential_nal_unit {
+                Some((offset, header, length)) => {
+                    /*println!(
+                        "{}, {}, {}, {}, {:?}",
+                        buffer_pos + buffer_offset as u64 + offset as u64,
+                        buffer_len,
+                        buffer_offset as u64,
+                        length,
+                        header
+                    );*/
+                    if !self.is_nal_believable(
+                        header,
+                        length,
+                        buffer_pos,
+                        &buffer[(buffer_offset + offset)
+                            ..(buffer_offset + offset + length as usize).min(buffer.len())],
+                    ) {
+                        buffer_offset += offset - 3;
+                        continue;
                     }
-                    _ => {
-                        reader.seek(SeekFrom::Current(buffer_len as i64 - 4))?;
-                        println!("Seeking to {}", buffer_pos + buffer_len as u64 - 4);
-                        continue 'outer;
-                    }
+
+                    let nal_start = buffer_pos + buffer_offset as u64 + offset as u64;
+                    let nal_end = nal_start + length as u64;
+                    self.nal_units.push((header, nal_start..nal_end));
+
+                    // println!("Seeking to nal end {}", nal_end);
+
+                    reader.seek(SeekFrom::Start(nal_end))?;
+                    break;
+                }
+                _ => {
+                    reader.seek(SeekFrom::Current(buffer_len as i64 - 4))?;
+                    // println!("Seeking to {}", buffer_pos + buffer_len as u64 - 4);
+                    break;
                 }
             }
         }
+
+        Ok(false)
     }
 
     pub fn is_nal_believable(
@@ -79,18 +79,18 @@ impl H264Stream {
         nal: &[u8],
     ) -> bool {
         if len < 4 {
-            dbg!(len);
+            // dbg!(len);
             return false;
         }
 
-        if u8::from(header) == 0x01 {
+        /*if u8::from(header) == 0x01 {
             println!(
                 "{}, {:?}, {:02x}",
                 offset,
                 header.nal_unit_type(),
                 u8::from(header)
             );
-        }
+        }*/
 
         match header.nal_unit_type() {
             UnitType::SeqParameterSet if len < 512 => {
@@ -151,13 +151,13 @@ impl H264Stream {
                 true
             }
             Err(e) => {
-                println!("{:?}: {}, {:?}", header.nal_unit_type(), nal_unit.len(), e);
+                // println!("{:?}: {}, {:?}", header.nal_unit_type(), nal_unit.len(), e);
 
-                while let None = reader.reader() {
-                    reader.read_bool("");
-                }
+                /*while let None = reader.reader() {
+                    let _ = reader.read_bool("");
+                }*/
 
-                let cursor = reader.reader().unwrap();
+                // let cursor = reader.reader().unwrap();
                 // println!("cursor {}", cursor.position());
 
                 // cursor.position() > 2

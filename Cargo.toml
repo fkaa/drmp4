@@ -8,7 +8,10 @@ edition = "2021"
 [dependencies]
 aho-corasick = "1.0.1"
 anyhow = "1.0.70"
+bitter = "0.6.1"
+bpaf = { version = "0.7.10", features = ["color"] }
 h264-reader = { path = "../h264-reader" } # git = "https://github.com/dholroyd/h264-reader" }
+indicatif = "0.17.3"
 memmap = "0.7.0"
 owo-colors = "3.5.0"
 pretty-hex = "0.3.0"
